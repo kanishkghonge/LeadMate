@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#161b34" />
+  <title>LeadMate — Follow-up, without friction</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">L</span><span>LeadMate</span></div>
+      <button class="icon-btn" id="globalAdd" aria-label="Add lead">＋</button>
+    </header>
+
+    <main>
+      <section id="dashboardView" class="view active">
+        <div class="welcome"><p id="dateLabel"></p><h1>Make today count.</h1><p class="muted">Your follow-ups, in one calm place.</p></div>
+        <section class="ai-card" id="dailyPromptCard">
+          <div><span class="eyebrow">DAILY AI BRIEF</span><h2>Plan your conversations</h2><p>Copy a ready prompt with today’s calls and texts.</p></div>
+          <div class="ai-actions"><button class="primary small" id="copyDailyPrompt">Copy prompt</button><button class="primary small" id="pasteAiJson">Paste AI JSON</button></div>
+        </section>
+        <div class="section-head"><h2>Today’s focus</h2><span id="taskCount" class="count"></span></div>
+        <div id="taskSummary" class="task-summary"></div>
+        <div class="tabs" role="tablist"><button class="tab active" data-filter="all">All</button><button class="tab" data-filter="call">Calls</button><button class="tab" data-filter="text">Texts</button><button class="tab" data-filter="general">To-dos</button></div>
+        <div id="taskList" class="task-list"></div>
+        <button class="add-general" id="addGeneral">＋ Add a personal to-do</button>
+      </section>
+
+      <section id="leadsView" class="view">
+        <div class="page-title"><div><p class="eyebrow">YOUR PIPELINE</p><h1>People</h1></div><button class="primary small" id="newLead">＋ Lead</button></div>
+        <div class="search-wrap"><span>⌕</span><input id="leadSearch" placeholder="Search name, number, @handle…" /></div>
+        <div class="chips"><button class="chip active" data-lead-filter="active">Active</button><button class="chip" data-lead-filter="clients">Clients</button><button class="chip" data-lead-filter="dnc">Do not contact</button><button class="chip" data-lead-filter="all">All</button></div>
+        <div id="leadList" class="lead-list"></div>
+      </section>
+
+      <section id="settingsView" class="view">
+        <div class="page-title"><div><p class="eyebrow">SETUP</p><h1>Settings</h1></div></div>
+        <section class="settings-card"><h2>Your business context</h2><p>This is included in every AI prompt.</p><textarea id="businessContext" placeholder="What you sell, ideal customer, your tone, important offers…"></textarea><button id="saveContext" class="primary">Save context</button></section>
+        <section class="settings-card"><h2>Your data</h2><p>Keep a backup, load detailed sample leads to explore the workflow, or start from a blank slate.</p><div class="two-buttons"><button id="exportData" class="secondary">Export data</button><label class="secondary file-label">Import data<input id="importData" type="file" accept="application/json" hidden /></label></div><div class="two-buttons" style="margin-top:9px"><button id="loadDemo" class="secondary">Load demo data</button><button id="clearData" class="danger secondary">Start fresh</button></div></section>
+        <section class="settings-card subtle"><h2>How LeadMate works</h2><p>Everything stays on this device. Overdue tasks automatically appear in today’s list until completed or rescheduled.</p></section>
+      </section>
+    </main>
+
+    <nav class="bottom-nav"><button class="nav active" data-view="dashboardView"><span>⌂</span>Today</button><button class="nav" data-view="leadsView"><span>♙</span>People</button><button class="nav" data-view="settingsView"><span>⚙</span>Settings</button></nav>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <aside class="sheet" id="sheet"><div class="sheet-handle"></div><div id="sheetContent"></div></aside>
+  <div id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
