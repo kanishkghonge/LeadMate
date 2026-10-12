@@ -33,7 +33,7 @@
       <section id="leadsView" class="view">
         <div class="page-title"><div><p class="eyebrow">YOUR PIPELINE</p><h1>People</h1></div><button class="primary small" id="newLead">＋ Lead</button></div>
         <div class="search-wrap"><span>⌕</span><input id="leadSearch" placeholder="Search name, number, @handle…" /></div>
-        <div class="chips"><button class="chip active" data-lead-filter="active">Active</button><button class="chip" data-lead-filter="clients">Clients</button><button class="chip" data-lead-filter="dnc">Do not contact</button><button class="chip" data-lead-filter="no_reply">Paused</button><button class="chip" data-lead-filter="all">All</button></div>
+        <div class="chips"><button class="chip active" data-lead-filter="active">Active</button><button class="chip" data-lead-filter="demo">Demo</button><button class="chip" data-lead-filter="paid">Paying</button><button class="chip" data-lead-filter="follow-up">Follow-up</button><button class="chip" data-lead-filter="not-interested">Not interested</button><button class="chip" data-lead-filter="do-not-call">Do not call</button><button class="chip" data-lead-filter="cant-afford">Can’t afford</button><button class="chip" data-lead-filter="all">All</button></div>
         <div id="leadList" class="lead-list"></div>
       </section>
 
@@ -53,13 +53,5 @@
   <aside class="sheet" id="sheet"><div class="sheet-handle"></div><div id="sheetContent"></div></aside>
   <div id="toast"></div>
   <script src="app.js"></script>
-  <script>
-    document.querySelector('#developerDate').value = db.developerDate || '';
-    document.querySelector('#saveDeveloperDate').onclick = () => {
-      db.developerDate = document.querySelector('#developerDate').value || '';
-      save(); render();
-      toast(db.developerDate ? `Testing as ${db.developerDate}.` : 'Using the real date.');
-    };
-  </script>
 </body>
 </html>
