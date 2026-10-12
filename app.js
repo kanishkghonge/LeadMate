@@ -1,6 +1,6 @@
 const KEY='leadmate-v2',OLD='leadmate-v1',$=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const day=(d=new Date())=>{d=new Date(d);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,10)};let today=()=>day();const add=n=>{let d=new Date(`${today()}T12:00:00`);d.setDate(d.getDate()+n);return day(d)},id=()=>crypto.randomUUID(),esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-const blank=()=>({version:2,context:'',leads:[],tasks:[]});
+const blank=()=>({version:2,context:'',scripts:{},leads:[],tasks:[]});
 let db=(()=>{try{let x=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(OLD)||'null');if(!x||!Array.isArray(x.leads)||!Array.isArray(x.tasks))return blank();x.version=2;x.leads=x.leads.filter(x=>x?.id).map(x=>({...x,name:String(x.name||'Unnamed'),contact:String(x.contact||''),interactions:Array.isArray(x.interactions)?x.interactions:[],converted:!!x.converted,dnc:!!x.dnc,noReply:!!x.noReply}));x.tasks=x.tasks.filter(x=>x?.id).map(x=>({...x,date:/^\d{4}-\d{2}-\d{2}$/.test(x.date||'')?x.date:today(),done:!!x.done,archived:!!x.archived}));return x}catch{return blank()}})();today=()=>/^\d{4}-\d{2}-\d{2}$/.test(db.developerDate||'')?db.developerDate:day();
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(db))}catch{toast('Saving failed. Export a backup now.')}},lead=i=>db.leads.find(x=>x.id===i),active=l=>l&&!l.converted&&!l.dnc&&!l.noReply,openFor=i=>db.tasks.filter(t=>t.leadId===i&&!t.done&&!t.archived),done=(t,r='completed')=>{t.done=true;t.closedReason=r;t.completedAt=new Date().toISOString()},closeFor=(i,r)=>openFor(i).forEach(t=>done(t,r));
 function toast(s){$('#toast').textContent=s;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2400)}
@@ -8,8 +8,9 @@ function schedule(leadId,type,date,sourceTaskId){let l=lead(leadId);if(!active(l
 function ensureAi(){let ls=db.leads.filter(active).filter(l=>openFor(l.id).some(t=>t.date<=today()&&!t.ai));let k='ai-'+today();if(ls.length&&!db.tasks.some(t=>t.dailyKey===k)){db.tasks.push({id:id(),type:'ai_review',title:`Prepare AI guidance for ${ls.length} due lead${ls.length===1?'':'s'}`,note:'Copy prompt, then paste and review AI JSON before outreach.',date:today(),done:false,dailyKey:k});save()}}
 function due(){ensureAi();return db.tasks.filter(t=>!t.done&&!t.archived&&t.date<=today()&&(!t.leadId||active(lead(t.leadId)))).sort((a,b)=>a.date.localeCompare(b.date))}
 function render(){let all=due(),filter=window.tf||'all',ts=all.filter(t=>filter==='all'||t.type===filter||(filter==='general'&&['general','ai_review'].includes(t.type))),over=all.filter(t=>t.date<today()).length;$('#taskCount').textContent=`${ts.length} item${ts.length===1?'':'s'}${over?` · ${over} overdue`:''}`;$('#taskSummary').innerHTML=`<span>${all.filter(t=>t.type==='call').length} calls</span><span>${all.filter(t=>t.type==='text').length} texts</span>${over?`<span class="urgent">${over} overdue</span>`:''}`;$('#taskList').innerHTML=ts.length?ts.map(t=>{let l=lead(t.leadId),detail=t.type==='text'&&t.ai?.exact_message?t.ai.exact_message:t.type==='call'&&t.ai?.pre_call_brief?t.ai.pre_call_brief:t.note||(l?.contact)||'Personal task';return `<article class="task ${t.date<today()?'is-overdue':''}"><button class="check" onclick="completeTask('${t.id}')"></button><div class="task-main" onclick="openTask('${t.id}')"><span class="task-type">${esc(t.type.replace('_',' '))}${t.date<today()?` · overdue since ${t.date}`:''}</span><strong>${esc(t.title)}</strong><p>${esc(detail)}</p></div><button class="task-action" onclick="openTask('${t.id}')">›</button></article>`}).join(''):'<div class="empty">Nothing needs attention. Due follow-ups will stay here until you handle or reschedule them.</div>';let q=$('#leadSearch').value.toLowerCase(),lf=window.lf||'active',ls=db.leads.filter(l=>{let match=lf==='all'||lf==='active'&&active(l)||lf==='clients'&&l.converted||lf==='dnc'&&l.dnc||lf==='no_reply'&&l.noReply;return match&&`${l.name} ${l.contact} ${l.interest||''}`.toLowerCase().includes(q)});$('#leadList').innerHTML=ls.length?ls.map(l=>`<article class="lead" onclick="profile('${l.id}')"><div class="avatar">${esc(l.name[0]?.toUpperCase()||'?')}</div><div class="lead-info"><strong>${esc(l.name)}</strong><span>${esc(l.contact)} · ${l.interactions.length} interactions</span></div>${l.converted?'<span class="badge">Client</span>':l.dnc?'<span class="badge dnc">DNC</span>':l.noReply?'<span class="badge paused">Paused</span>':'<span class="task-action">›</span>'}</article>`).join(''):'<div class="empty">No people here yet.</div>';$('#businessContext').value=db.context||'';$('#dateLabel').textContent=new Intl.DateTimeFormat('en',{weekday:'long',month:'short',day:'numeric'}).format(new Date())}
-function sheet(h){$('#sheetContent').innerHTML=h;$('#modalBackdrop').classList.add('open');$('#sheet').classList.add('open')}function closeSheet(){$('#modalBackdrop').classList.remove('open');$('#sheet').classList.remove('open')}$('#modalBackdrop').onclick=closeSheet;
+function sheet(h){$('#sheetContent').innerHTML=h.replace(/<p class="notice"><b>SAY<\/b><br>([\s\S]*?)<\/p>/gi,(m,text)=>`<div class="notice"><b>SAY</b><br><textarea class="inline-script" data-say-editor>${text.replace(/<[^>]*>/g,'')}</textarea></div>`);$('#modalBackdrop').classList.add('open');$('#sheet').classList.add('open');setTimeout(()=>{document.querySelectorAll('[data-say-editor]').forEach(x=>{if(x.dataset.bound)return;x.dataset.bound='1';x.oninput=()=>{db.scripts=db.scripts||{};db.scripts[`say:${x.value.slice(0,30)}`]=x.value;save()}})},0)}function closeSheet(){$('#modalBackdrop').classList.remove('open');$('#sheet').classList.remove('open')}$('#modalBackdrop').onclick=closeSheet;
 function opts(v,n){return `<div class="option-row" id="${n}">${v.map((x,i)=>`<button type="button" class="option${i?'':' selected'}" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}function choice(n){return $(n).querySelector('.selected').dataset.v}function bind(n,cb){$(n).onclick=e=>{let b=e.target.closest('.option');if(!b)return;$(n).querySelectorAll('.option').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');cb?.(b.dataset.v)}}
+const autoChoiceIds=new Set(['bcOpening','bcSetup','bcContent','bcPlanning','bookedAvailable','bookedSetup','bookedContent','bookedPlanning','ccGood','ccInterested','ccSetup','ccContent','ccPlanning']);
 function newLead(){sheet(`<h2>New interaction</h2><form id="f" class="form-grid"><div class="field"><label>Name</label><input name="name" required autofocus></div><div class="field"><label>Contact</label><input name="contact" required placeholder="Phone, email, or @handle"></div><div class="field"><label>What did you discuss?</label><textarea name="summary" required></textarea></div><div class="field"><label>Interested in</label>${opts(['ReceptionMate','Content Mate','ClinicMate','Online OPD','Other'],'interest')}<input id="other" hidden></div><div class="field"><label>Next follow-up</label>${opts(['Tomorrow','2 days','3 days','1 week','2 weeks','Pick date'],'follow')}<input id="date" type="date" min="${today()}" hidden></div><div class="field"><label>Remember</label><textarea name="memory"></textarea></div><div class="sheet-footer"><button type="button" class="secondary" onclick="closeSheet()">Cancel</button><button class="primary">Save</button></div></form>`);bind('#interest',v=>$('#other').hidden=v!=='Other');bind('#follow',v=>$('#date').hidden=v!=='Pick date');$('#f').onsubmit=e=>{e.preventDefault();let x=new FormData(e.target),contact=x.get('contact').trim(),dupe=db.leads.find(l=>contact&&l.contact.toLowerCase()===contact.toLowerCase());if(dupe){toast(`Contact already exists: ${dupe.name}`);return}let f=choice('#follow'),map={Tomorrow:1,'2 days':2,'3 days':3,'1 week':7,'2 weeks':14},date=f==='Pick date'?$('#date').value:add(map[f]);if(!date||date<today()){toast('Choose a valid future date.');return}let c=choice('#interest'),l={id:id(),name:x.get('name').trim(),contact,interest:c==='Other'?$('#other').value.trim()||'Other':c,memory:x.get('memory').trim(),interactions:[{id:id(),date:today(),kind:'sales conversation',summary:x.get('summary').trim()}],converted:false,dnc:false,noReply:false};db.leads.unshift(l);schedule(l.id,'call',date);save();closeSheet();render();toast('Lead saved and follow-up scheduled.')}}
 function profile(i){let l=lead(i),hist=l.interactions.slice().reverse().map(x=>`<div class="notice"><b>${x.date} · ${esc(x.kind)}</b><br>${esc(x.summary)}</div>`).join('')||'<p class="muted">No interactions yet.</p>';sheet(`<h2>${esc(l.name)}</h2><p class="intro">${esc(l.contact)} · ${esc(l.interest||'No interest')}</p><div class="option-row"><button class="option" onclick="editLead('${i}')">Edit</button><button class="option" onclick="interaction('${i}')">Record interaction</button><button class="option" onclick="copyPrompt(openFor('${i}'))">Copy AI prompt</button></div>${l.memory?`<div class="notice"><b>Remember</b><br>${esc(l.memory)}</div>`:''}<h3>History</h3>${hist}<div class="sheet-footer">${active(l)?`<button class="secondary" onclick="setState('${i}','converted')">Converted</button><button class="danger" onclick="setState('${i}','dnc')">Do not contact</button>`:`<button class="secondary" onclick="setState('${i}','active')">Reactivate</button>`}</div>`)}
 function setState(i,s){let l=lead(i);l.converted=s==='converted';l.dnc=s==='dnc';l.noReply=s==='paused';if(s!=='active')closeFor(i,s);else schedule(i,'call',today());save();closeSheet();render();toast(s==='dnc'?'DNC saved; all outreach stopped.':s==='active'?'Lead reactivated.':'Lead status updated.')}
@@ -41,6 +42,9 @@ function loadDetailedDemo(){
     {id:id(),type:'general',title:'Update ClinicMate one-pager',note:'Add the new appointment-flow screenshot.',date:add(2),done:false}
   ]};save();render();toast('Detailed demo data loaded.');
 }
+
+function renderScripts(){let root=$('#scriptEditor');if(!root)return;let scripts=db.scripts||{};let items=[['Cold call','Opening / qualification','Say your opening, then capture the selected answer.'],['Cold call','Interested → location → specialty → setup','Branch after each answer; selection advances automatically.'],['Cold call','Content branch','Yes → duration → followers; No → planning → ContentMate or offline.'],['Booked call','Opening / qualification','Say the opening, then capture the selected answer.'],['Booked call','Setup and content branches','No setup → explanation → content; existing setup → content qualification.'],['Booked call','Outcome','Save the interaction and schedule the next action.']];root.innerHTML=items.map(([flow,branch,defaultText],i)=>`<div class="script-editor-item"><div class="eyebrow">${esc(flow)}</div><h3>${esc(branch)}</h3><p class="muted">Questions are fixed and cannot be edited.</p><textarea data-script="${i}">${esc(scripts[i]||defaultText)}</textarea></div>`).join('')}
+function saveScripts(){let out={};$$('[data-script]').forEach(x=>out[x.dataset.script]=x.value);db.scripts=out;save();toast('Scripts saved.')}
 $('#loadDemo').onclick=()=>{if(confirm('Replace your current data with detailed demo data? Export first if you want to keep it.'))loadDetailedDemo()};
 
 /* Interaction recording redesign */
@@ -50,13 +54,13 @@ function lmContact(l){return [l.phone,l.contact&&/^\+?[\d\s()-]{7,}$/.test(l.con
 function lmFind(q){q=q.trim().toLowerCase();return q?db.leads.filter(l=>`${l.name} ${l.phone||''} ${l.instagram||''} ${l.email||''} ${l.contact||''}`.toLowerCase().includes(q)):[]}
 function lmOpts(v,n){return `<div class="option-row" id="${n}">${v.map((x,i)=>`<button type="button" class="option${i?'':' selected'}" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div>`}
 function lmPick(n){return $(n)?.querySelector('.selected')?.dataset.v}
-function lmBind(n,cb){$(n).onclick=e=>{let b=e.target.closest('.option');if(!b)return;$(n).querySelectorAll('.option').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');cb?.(b.dataset.v)}}
+function lmBind(n,cb){$(n).onclick=e=>{let b=e.target.closest('.option');if(!b)return;$(n).querySelectorAll('.option').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');cb?.(b.dataset.v);if(autoChoiceIds.has(n.slice(1))){let next=$(n).closest('.sheet')?.querySelector('.sheet-footer .primary');if(next){next.hidden=true;setTimeout(()=>next.click(),0)}}}}
 function render(){let q=$('#leadSearch').value.toLowerCase(),f=window.lf||'active',ls=db.leads.filter(l=>{let s=lmStatus(l),active=!['paid','do-not-call'].includes(s);return (f==='all'||f===s||(f==='active'&&active))&&`${l.name} ${lmContact(l)}`.toLowerCase().includes(q)});$('#leadList').innerHTML=ls.length?ls.map(l=>`<article class="lead" onclick="profile('${l.id}')"><div class="avatar">${esc(l.name[0]?.toUpperCase()||'?')}</div><div class="lead-info"><strong>${esc(l.name)}</strong><span>${esc(lmContact(l))} · ${l.interactions.length} interactions</span></div><span class="badge">${esc(lmLabel(lmStatus(l)))}</span></article>`).join(''):'<div class="empty">No leads match this view.</div>';let due=db.tasks.filter(t=>!t.done&&!t.archived&&t.date<=today()),calls=due.filter(t=>t.type==='call');$('#taskCount').textContent=`${due.length} item${due.length===1?'':'s'}`;$('#taskSummary').innerHTML=`<span>${calls.length} calls due</span>`;$('#taskList').innerHTML=due.length?due.map(t=>`<article class="task"><button class="check" onclick="openTask('${t.id}')"></button><div class="task-main" onclick="openTask('${t.id}')"><span class="task-type">${esc(t.type)}</span><strong>${esc(t.title)}</strong><p>${esc(t.date)}${t.time?' · '+esc(t.time):''}</p></div><button class="task-action" onclick="openTask('${t.id}')">›</button></article>`).join(''):'<div class="empty">Nothing is due today.</div>';$('#businessContext').value=db.context||'';$('#dateLabel').textContent=new Intl.DateTimeFormat('en',{weekday:'long',month:'short',day:'numeric'}).format(new Date())}
 function newLead(){sheet(`<h2>New interaction</h2><p class="intro">Who do you want to interact with?</p><div class="field"><label>Search name, phone, Instagram or email</label><input id="lmSearch" autofocus placeholder="Dr name, phone, @handle, email"></div><div id="lmMatches"></div><div class="sheet-footer"><button class="secondary" onclick="closeSheet()">Cancel</button><button class="primary" id="lmNew">New contact</button></div>`);$('#lmSearch').oninput=()=>{let a=lmFind($('#lmSearch').value);$('#lmMatches').innerHTML=a.length?`<p class="muted">Existing contacts</p>${a.map(l=>`<button class="option" style="width:100%;text-align:left;margin-top:7px" onclick="lmExisting('${l.id}')"><b>${esc(l.name)}</b><br>${esc(lmContact(l))} · ${esc(lmLabel(lmStatus(l)))}</button>`).join('')}`:$('#lmSearch').value?'<p class="muted">No match found. Create a new contact.</p>':''};$('#lmNew').onclick=()=>lmCreate($('#lmSearch').value)}
 function lmExisting(i){let l=lead(i),h=l.interactions.slice(-3).reverse().map(x=>`<div class="notice"><b>${esc(x.date)} · ${esc(x.type||x.kind||'Interaction')}</b><br>${esc(x.summary||x.outcome||'Recorded')}</div>`).join('')||'<p class="muted">No prior interactions.</p>';sheet(`<h2>${esc(l.name)}</h2><p class="intro">${esc(lmContact(l))}</p><div class="notice"><b>Status: ${esc(lmLabel(lmStatus(l)))}</b><br>Last interaction: ${esc(l.interactions.at(-1)?.date||'None')}<br>${l.nextAction?`Next action: ${esc(l.nextAction.date)}`:'No scheduled action'}</div><h3>Previous interactions</h3>${h}<div class="sheet-footer"><button class="secondary" onclick="profile('${i}')">View profile</button><button class="primary" onclick="lmStart('${i}')">Continue</button></div>`)}
 function lmCreate(seed=''){let phone=/^\+?[\d\s()-]{7,}$/.test(seed),ig=seed.startsWith('@'),email=seed.includes('@')&&!ig;sheet(`<h2>New contact</h2><p class="intro">Add any details you have. One identifier is enough.</p><form id="lmCreate" class="form-grid"><div class="field"><label>Name</label><input name="name" value="${!phone&&!ig&&!email?esc(seed):''}"></div><div class="field"><label>Phone number</label><input name="phone" value="${phone?esc(seed):''}"></div><div class="field"><label>Instagram handle</label><input name="instagram" value="${ig?esc(seed):''}"></div><div class="field"><label>Email</label><input name="email" value="${email?esc(seed):''}"></div><div class="sheet-footer"><button type="button" class="secondary" onclick="newLead()">Back</button><button class="primary">Continue</button></div></form>`);$('#lmCreate').onsubmit=e=>{e.preventDefault();let x=Object.fromEntries(new FormData(e.target));if(!x.name&&!x.phone&&!x.instagram&&!x.email){toast('Add at least one identifier.');return}let d=db.leads.find(l=>['phone','instagram','email'].some(k=>x[k]&&String(l[k]||l.contact||'').toLowerCase()===x[k].trim().toLowerCase()));if(d){lmExisting(d.id);return}let l={id:id(),name:x.name.trim()||'Unnamed lead',phone:x.phone.trim(),instagram:x.instagram.trim(),email:x.email.trim(),contact:x.phone.trim()||x.instagram.trim()||x.email.trim(),interactions:[],status:'new'};db.leads.unshift(l);save();lmType(l.id,true)}}
-function lmStart(i){let l=lead(i),p=l.phone||(/^\+?[\d\s()-]{7,}$/.test(l.contact||'')?l.contact:'');if(p){lmType(i,false);return}sheet(`<h2>Phone number not recorded</h2><p class="intro">Add the number if you have it. You may continue without one.</p><div class="field"><label>Phone number</label><input id="lmPhone" inputmode="tel"></div><div class="sheet-footer"><button class="secondary" id="lmSkip">Continue without</button><button class="primary" id="lmSavePhone">Save & continue</button></div>`);$('#lmSkip').onclick=()=>lmType(i,false);$('#lmSavePhone').onclick=()=>{l.phone=$('#lmPhone').value.trim();l.contact=l.phone||l.contact;save();lmType(i,false)}}
-function lmType(i,fresh){let choices=fresh?['Booked Call','Cold Call']:['Follow-up Call','Booked Call','Cold Call'];sheet(`<h2>What type of call is this?</h2><p class="intro">${esc(lead(i).name)}</p>${lmOpts(choices,'lmType')}<div class="sheet-footer"><button class="secondary" onclick="profile('${i}')">Cancel</button><button class="primary" id="lmGo">Continue</button></div>`);$('#lmGo').onclick=()=>lmPick('#lmType')==='Booked Call'?lmBooked(i):lmBasic(i,lmPick('#lmType'))}
+function lmStart(i){let l=lead(i),p=l.phone||(/^\+?[\d\s()-]{7,}$/.test(l.contact||'')?l.contact:''),begin=()=>l.interactions.length?lmBasic(i,'Follow-up Call'):lmType(i,false);if(p){begin();return}sheet(`<h2>Phone number not recorded</h2><p class="intro">Add the number if you have it. You may continue without one.</p><div class="field"><label>Phone number</label><input id="lmPhone" inputmode="tel"></div><div class="sheet-footer"><button class="secondary" id="lmSkip">Continue without</button><button class="primary" id="lmSavePhone">Save & continue</button></div>`);$('#lmSkip').onclick=begin;$('#lmSavePhone').onclick=()=>{l.phone=$('#lmPhone').value.trim();l.contact=l.phone||l.contact;save();begin()}}
+function lmType(i,fresh){let choices=fresh?['Booked Call','Cold Call']:['Cold Call','Booked Call'];sheet(`<h2>What type of call is this?</h2><p class="intro">${esc(lead(i).name)}</p>${lmOpts(choices,'lmType')}<div class="sheet-footer"><button class="secondary" onclick="profile('${i}')">Cancel</button><button class="primary" id="lmGo">Continue</button></div>`);$('#lmGo').onclick=()=>lmPick('#lmType')==='Booked Call'?lmBooked(i):lmBasic(i,lmPick('#lmType'))}
 function lmOutcome(){return `<div class="field"><label>Outcome</label>${lmOpts(['Give me a demo','I want to pay','Not interested','Do not call','Let’s talk later','Can’t afford'],'lmOutcome')}</div><div id="lmOutcomeExtra"></div>`}
 function lmWireOutcome(){if(!$('#lmOutcome'))return;lmBind('#lmOutcome',v=>$('#lmOutcomeExtra').innerHTML=v==='Let’s talk later'?`<div class="field"><label>Follow up date</label><input name="callbackDate" type="date" min="${today()}" value="${add(7)}"></div><div class="field"><label>Time</label><input name="callbackTime" type="time"></div>`:v==='Not interested'?'<div class="field"><label>Reason</label><textarea name="reason" placeholder="Why are they not interested?"></textarea></div>':v==='Give me a demo'?'<div class="field"><label>Demo date and time</label><input name="demoDate" type="datetime-local"></div>':v==='I want to pay'?'<div class="field"><label>Payment / onboarding notes</label><textarea name="payment"></textarea></div>':'' )}
 function lmBasic(i,type){let l=lead(i),prev=l.interactions.at(-1);sheet(`<h2>${esc(type)}</h2>${type==='Follow-up Call'?`<div class="notice"><b>Previous context</b><br>${esc(prev?`${prev.date}: ${prev.summary||prev.outcome||''}`:'No previous interactions recorded.')}</div>`:'<p class="intro">The detailed format will be added later.</p>'}<form id="lmBasic" class="form-grid"><div class="field"><label>Call notes</label><textarea name="notes" required autofocus placeholder="Record what happened…"></textarea></div>${lmOutcome()}<div class="sheet-footer"><button type="button" class="secondary" onclick="profile('${i}')">Cancel</button><button class="primary">Save interaction</button></div></form>`);lmWireOutcome();$('#lmBasic').onsubmit=e=>{e.preventDefault();lmSave(i,type,Object.fromEntries(new FormData(e.target)),lmPick('#lmOutcome'))}}
@@ -95,7 +99,7 @@ function lmBooked(i){let l=lead(i),s={step:'opening',opening:'',location:'',spec
 function lmCold(i){let l=lead(i),s={step:'opening',good:'',interested:'',location:'',specialty:'',setup:'',content:'',duration:'',followers:'',planning:'',contentMateShared:false,outcome:'',notes:'',callbackChoice:'Doctor did not give a date',callbackDate:'',callbackTime:'',reason:'',product:'',paymentStatus:'Pending',demoDetails:'',demoStatus:'',otherOutcome:'',nextAction:''},back={callback:'opening',opd:'opening',interest:'opd',location:'interest',specialty:'location',setup:'specialty',content:'setup',duration:'content',followers:'duration',planning:'content',contentmate:'planning',offline:'planning',outcome:'followers'};
  const nav=x=>{s.step=x;draw()}, picked=(n,v)=>{if(!v||!$(n))return;$(n).querySelectorAll('.option').forEach(x=>x.classList.toggle('selected',x.dataset.v===v))}, notes=()=>`<div class="field"><label>Additional Notes</label><textarea id="ccNotes" placeholder="Requirements, objections, preferences, or context">${esc(s.notes)}</textarea></div>`, field=(label,key)=>`<div class="field"><label>${label}</label><input id="ccField" data-key="${key}" value="${esc(s[key]||'')}"></div>`, footer=(label,canBack=true)=>`<div class="sheet-footer">${canBack?'<button class="secondary" id="ccBack">Back</button>':`<button class="secondary" onclick="profile('${i}')">Cancel</button>`}<button class="primary" id="ccNext">${label}</button></div>`;
  function keep(){let n=$('#ccNotes'),f=$('#ccField'),d=$('#ccDate'),t=$('#ccTime');if(n)s.notes=n.value;if(f)s[f.dataset.key]=f.value;if(d)s.callbackDate=d.value;if(t)s.callbackTime=t.value}
- function screen(body,label,run,canBack=true){sheet(`<h2>Cold call</h2>${body}${notes()}${footer(label,canBack)}`);$('#ccNotes').oninput=e=>s.notes=e.target.value;$('#ccNext').onclick=()=>{keep();run()};let b=$('#ccBack');if(b)b.onclick=()=>{keep();nav(back[s.step]||'opening')}}
+ function screen(body,label,run,canBack=true){sheet(`<h2>Cold call</h2>${body}${notes()}${footer(label,true)}`);$('#ccNotes').oninput=e=>s.notes=e.target.value;$('#ccNext').onclick=()=>{keep();run()};let b=$('#ccBack');if(b)b.onclick=()=>{keep();nav(back[s.step]||'opening')}}
  function callbackOptions(){return `<div class="field"><label>Callback timing</label>${lmOpts(['Specific date and time','In one week','Next month','Doctor did not give a date'],'ccCallback')}</div><div id="ccDateWrap"></div>`}
  function callbackWire(){lmBind('#ccCallback',v=>{s.callbackChoice=v;$('#ccDateWrap').innerHTML=v==='Specific date and time'?`<div class="field"><label>Date and time</label><input id="ccDate" type="date" min="${today()}" value="${esc(s.callbackDate)}"><input id="ccTime" type="time" value="${esc(s.callbackTime)}"></div>`:''});picked('#ccCallback',s.callbackChoice)}
  function outcomeFields(){let o=s.outcome;if(o==='Not interested')return field('Reason','reason');if(o==='Wants to pay')return `<div class="field"><label>Product</label><input id="ccProduct" value="${esc(s.product)}"></div><div class="field"><label>Payment status</label>${lmOpts(['Pending','Paid','Not paid'],'ccPayment')}</div>`;if(o==='Wants a demo')return `<div class="field"><label>Demo details</label><textarea id="ccDemo">${esc(s.demoDetails)}</textarea></div><div class="field"><label>Demo status</label>${lmOpts(['To schedule','Scheduled','Completed'],'ccDemoStatus')}</div>`;if(o==='Asked to call later')return callbackOptions();if(o==='Will let me know.')return field('Agreed next action','nextAction');if(o==='Other')return field('Outcome','otherOutcome');return ''}
@@ -104,3 +108,218 @@ function lmCold(i){let l=lead(i),s={step:'opening',good:'',interested:'',locatio
  draw()
 }
 function lmBasic(i,type){if(type==='Follow-up Call'){lmFollowIntro(i);return}if(type==='Cold Call'){lmCold(i);return}let l=lead(i);sheet(`<h2>${esc(type)}</h2><p class="intro">The detailed format will be added later.</p><form id="lmBasic" class="form-grid"><div class="field"><label>Call notes</label><textarea name="notes" required autofocus placeholder="Record what happened…"></textarea></div>${lmOutcome()}<div class="field"><label>Additional Notes</label><textarea name="additionalNotes"></textarea></div><div class="sheet-footer"><button type="button" class="secondary" onclick="profile('${i}')">Cancel</button><button class="primary">Save interaction</button></div></form>`);lmWireOutcome();$('#lmBasic').onsubmit=e=>{e.preventDefault();let d=Object.fromEntries(new FormData(e.target));d.notes=[d.notes,d.additionalNotes].filter(Boolean).join('\n');lmSave(i,type,d,lmPick('#lmOutcome'))}}
+
+
+/* Test data generator */
+function generateTestData(){
+  const names=['Dr. Priya Sharma','Dr. Rajesh Kumar','Dr. Anjali Desai','Dr. Vikram Singh','Dr. Meera Patel','Dr. Amit Reddy','Dr. Kavita Nair','Dr. Sanjay Gupta','Dr. Pooja Joshi','Dr. Rahul Mehta','Dr. Sneha Iyer','Dr. Karan Verma','Dr. Divya Rao','Dr. Arjun Khanna','Dr. Neha Saxena','Dr. Manish Agarwal','Dr. Ritu Banerjee','Dr. Varun Malhotra','Dr. Shweta Kulkarni','Dr. Rohit Dutta','Dr. Ananya Das','Dr. Nikhil Menon','Dr. Shruti Kapoor','Dr. Vivek Bhat','Dr. Preeti Sinha','Dr. Deepak Sethi','Dr. Ishita Ghosh','Dr. Harsh Pandey','Dr. Sonali Chopra','Dr. Aditya Mishra','Dr. Tanvi Shah','Dr. Gaurav Thakur','Dr. Aditi Rane','Dr. Kunal Jain','Dr. Sakshi Bhatt','Dr. Rohan Pillai','Dr. Simran Dhawan','Dr. Akshay Yadav','Dr. Megha Chauhan','Dr. Parth Trivedi'];
+  const cities=['Mumbai','Delhi','Bangalore','Hyderabad','Chennai','Kolkata','Pune','Ahmedabad','Jaipur','Lucknow','Nagpur','Indore','Chandigarh','Kochi','Coimbatore'];
+  const specialties=['Dermatology','Cardiology','Orthopedics','Pediatrics','General Medicine','Gynecology','ENT','Ophthalmology','Neurology','Psychiatry','Dentistry','Physiotherapy'];
+  const interests=['Online OPD','ReceptionMate','Content Mate','ClinicMate','Combo package'];
+  const statuses=['new','demo','paid','follow-up','not-interested','do-not-call','cant-afford'];
+  
+  const testLeads=[];
+  const testTasks=[];
+  
+  for(let i=0;i<40;i++){
+    const name=names[i%names.length];
+    const city=cities[Math.floor(Math.random()*cities.length)];
+    const specialty=specialties[Math.floor(Math.random()*specialties.length)];
+    const interest=interests[Math.floor(Math.random()*interests.length)];
+    const status=statuses[Math.floor(Math.random()*statuses.length)];
+    const phone=`+91 ${Math.floor(Math.random()*9000000000+1000000000)}`;
+    const ig=Math.random()>0.5?`@dr${name.toLowerCase().replace(/[^a-z]/g,'')}`:null;
+    const email=Math.random()>0.6?`${name.toLowerCase().replace(/[^a-z]/g,'')}@clinic.in`:null;
+    
+    const numInteractions=Math.floor(Math.random()*5)+1;
+    const interactions=[];
+    for(let j=0;j<numInteractions;j++){
+      const types=['Booked Call','Cold Call','Follow-up Call','greeting'];
+      const outcomes=['Will let me know.','Not interested','Wants to pay','Wants a demo','Asked to call later'];
+      interactions.push({
+        id:id(),
+        date:add(-Math.floor(Math.random()*30)),
+        type:types[Math.floor(Math.random()*types.length)],
+        summary:`Discussion about ${interest}. Patient practices ${specialty} in ${city}.`,
+        outcome:outcomes[Math.floor(Math.random()*outcomes.length)],
+        data:{
+          location:city,
+          specialty,
+          setup:Math.random()>0.5?'Yes':'No',
+          content:Math.random()>0.5?'Yes':'No',
+          notes:`Test interaction ${j+1}`
+        }
+      });
+    }
+    
+    const lead={
+      id:id(),
+      name,
+      phone,
+      instagram:ig,
+      email:email,
+      contact:phone,
+      interest,
+      location:city,
+      specialty,
+      memory:`Test lead ${i+1}. Interested in ${interest}.`,
+      interactions,
+      status,
+      converted:status==='paid',
+      dnc:status==='do-not-call',
+      noReply:status==='follow-up'
+    };
+    
+    testLeads.push(lead);
+    
+    // Add some tasks for active leads
+    if(['new','demo','follow-up'].includes(status)&&Math.random()>0.4){
+      const taskTypes=['call','text','general'];
+      const taskType=taskTypes[Math.floor(Math.random()*taskTypes.length)];
+      const daysOffset=Math.floor(Math.random()*7)-2;
+      testTasks.push({
+        id:id(),
+        leadId:taskType!=='general'?lead.id:undefined,
+        type:taskType,
+        title:taskType==='general'?`Test task for planning`:`${taskType==='call'?'Call':'Text'} ${name}`,
+        note:taskType==='general'?'General task note':'Follow up on previous discussion',
+        date:add(daysOffset),
+        time:Math.random()>0.5?`${Math.floor(Math.random()*12)+9}:00`:'',
+        done:false,
+        ai:taskType==='call'?{
+          pre_call_brief:`Test brief for ${name}. Follow up on ${interest}.`,
+          call_goal:`Discuss next steps for ${interest} implementation.`
+        }:taskType==='text'?{
+          exact_message:`Hi ${name}, following up on our discussion about ${interest}. Would this week work for a quick demo?`
+        }:undefined
+      });
+    }
+  }
+  
+  // Add some general tasks
+  for(let i=0;i<8;i++){
+    testTasks.push({
+      id:id(),
+      type:'general',
+      title:`Test general task ${i+1}`,
+      note:`This is test task ${i+1} for testing the application`,
+      date:add(Math.floor(Math.random()*10)-3),
+      done:false
+    });
+  }
+  
+  return {leads:testLeads,tasks:testTasks};
+}
+
+function applyTestData(){
+  const testData=generateTestData();
+  db.leads=[...db.leads,...testData.leads];
+  db.tasks=[...db.tasks,...testData.tasks];
+  save();
+  render();
+  toast(`Test data loaded: ${testData.leads.length} leads, ${testData.tasks.length} tasks`);
+}
+
+function removeTestData(){
+  db.leads=db.leads.filter(l=>!l.memory?.includes('Test lead'));
+  db.tasks=db.tasks.filter(t=>!t.title?.includes('Test') && !t.note?.includes('test'));
+  save();
+  render();
+  toast('Test data removed');
+}
+
+/* Authoritative Booked Call workflow. Kept last so legacy prototypes above cannot
+   override this live, one-question-at-a-time implementation. */
+function lmBooked(i){
+  const l=lead(i), doctorName=(l?.name&&l.name!=='Unnamed lead'?l.name.replace(/^Dr\.?\s*/i,''):'-');
+  const s={step:'opening',available:'',specialty:'',city:'',setup:'',content:'',duration:'',followers:'',planning:'',contentMateLinkShared:false,outcome:'',reason:'',product:'',paymentStatus:'Pending',demoDetails:'',demoStatus:'To schedule',callbackWhen:'No date given',callbackDate:'',callbackTime:'',otherOutcome:'',notes:''};
+  const previous={callback:'opening',specialty:'opening',city:'specialty',setup:'city',noSetupIntro:'setup',content:'noSetupIntro',duration:'content',followers:'duration',conversion:'followers',noContentPlan:'content',contentMate:'noContentPlan',noContentEnd:'noContentPlan',existingContent:'setup',existingDuration:'existingContent',existingFollowers:'existingDuration',existingConversion:'existingFollowers',existingNoContent:'existingContent',outcome:'conversion'};
+  const say=text=>`<p class="notice"><b>SAY</b><br>${text}</p>`;
+  const ask=(text,body)=>`${say(text)}${body}`;
+  const notes=()=>`<div class="field"><label>Additional Notes</label><textarea id="bookedNotes" placeholder="Requirements, objections, preferences, or context">${esc(s.notes)}</textarea></div>`;
+  const field=(label,key,placeholder='')=>`<div class="field"><label>${label}</label><input id="bookedField" data-key="${key}" value="${esc(s[key]||'')}" placeholder="${esc(placeholder)}"></div>`;
+  const select=(id,value)=>{if(!value||!$(id))return;$(id).querySelectorAll('.option').forEach(b=>b.classList.toggle('selected',b.dataset.v===value))};
+  const callbackFields=()=>`<div class="field"><label>When should I call back?</label>${lmOpts(['Today','Tomorrow','Specific date and time','No date given'],'bookedWhen')}</div><div id="bookedCallbackDate"></div>`;
+  function keep(){let n=$('#bookedNotes'),f=$('#bookedField'),d=$('#bookedDate'),t=$('#bookedTime');if(n)s.notes=n.value;if(f)s[f.dataset.key]=f.value;if(d)s.callbackDate=d.value;if(t)s.callbackTime=t.value;let p=$('#bookedProduct'),demo=$('#bookedDemo');if(p)s.product=p.value;if(demo)s.demoDetails=demo.value}
+  function wireCallback(){lmBind('#bookedWhen',v=>{s.callbackWhen=v;$('#bookedCallbackDate').innerHTML=v==='Today'||v==='Tomorrow'||v==='Specific date and time'?`<div class="field"><label>${v==='Specific date and time'?'Date and time':'Time'}</label>${v==='Specific date and time'?`<input id="bookedDate" type="date" min="${today()}" value="${esc(s.callbackDate)}">`:''}<input id="bookedTime" type="time" value="${esc(s.callbackTime)}"></div>`:''});select('#bookedWhen',s.callbackWhen);if(s.callbackWhen!=='No date given')$('#bookedWhen').querySelector('.selected')?.click()}
+  function screen(body,label,next,back=true){sheet(`<h2>Booked call</h2>${body}${notes()}<div class="sheet-footer"><button class="secondary" id="bookedBack">Back</button><button class="primary" id="bookedNext">${label}</button></div>`);$('#bookedNotes').oninput=e=>s.notes=e.target.value;let f=$('#bookedField');if(f)f.oninput=e=>s[e.target.dataset.key]=e.target.value;$('#bookedNext').onclick=()=>{keep();next()};let b=$('#bookedBack');if(b)b.onclick=()=>{keep();go(previous[s.step]||'opening')}}
+  function setInterest(product,patch={}){l.productInterests=l.productInterests||{};l.productInterests[product]={...(l.productInterests[product]||{}),...patch,updatedAt:new Date().toISOString()}}
+  function callback(){if(s.callbackWhen==='No date given')return null;if(!s.callbackTime){toast('Please record the time.');return undefined}let date=s.callbackWhen==='Today'?today():s.callbackWhen==='Tomorrow'?add(1):s.callbackDate;if(!date){toast('Please record the date.');return undefined}return {date,time:s.callbackTime}}
+  function save(){
+    keep(); let cb=null, outcome=s.available==='No'?'Asked to call later':s.outcome;
+    if(outcome==='Asked to call later'){cb=callback();if(cb===undefined)return}
+    const product=s.setup==='Yes'?(s.content==='Yes'?'Online OPD':'Clinic webpage / booking'):(s.content==='Yes'?'Online OPD':s.planning==='Yes'?'ContentMate':'Online OPD');
+    const data={...s,doctorName,product,callback:cb,consultationConversionsAsked:['conversion','existingConversion'].includes(s.step)||!!s.consultationConversionsAsked};
+    l.specialty=s.specialty||l.specialty;l.location=s.city||l.location;
+    if(s.duration||s.followers){l.contentProfile={duration:s.duration,followers:s.followers}}
+    if(s.planning==='Yes'){setInterest('ContentMate',{status:'prospect',linkShared:s.contentMateLinkShared});}
+    if(s.setup==='Yes'&&s.content==='No')setInterest('Clinic webpage / booking',{status:outcome==='Not interested'?'not interested':'interested'});
+    if(product==='Online OPD')setInterest('Online OPD',{status:outcome==='Not interested'?'not interested':outcome==='Wants to pay / proceed'?'payment pending':outcome==='Wants a demo'?'demo':outcome||'discussed'});
+    if(outcome==='Wants to pay / proceed')setInterest(product,{paymentStatus:s.paymentStatus});
+    if(outcome==='Wants a demo')setInterest(product,{demoStatus:s.demoStatus,demoDetails:s.demoDetails});
+    if(outcome==='Do not contact'){l.status='do-not-call';l.dnc=true;lmClose(i)}
+    else if(outcome==='Wants a demo')l.status='demo';
+    else if(outcome==='Wants to pay / proceed'&&s.paymentStatus==='Paid'){l.status='paid';l.converted=true;lmClose(i)}
+    else if(outcome==='Not interested')l.status='not-interested';
+    if(cb){
+      lmSchedule(i,cb.date,cb.time);
+      let task=db.tasks.find(t=>t.leadId===i&&!t.done&&t.type==='call');
+      if(task){let when=cb.date===today()?'today':cb.date===add(1)?'tomorrow':cb.date;task.title=`Call Dr. ${doctorName} ${when} at ${cb.time}`}
+    }
+    l.interactions.push({id:id(),date:today(),type:'Booked Call',summary:s.notes||s.reason||s.otherOutcome||outcome||'Booked call recorded',outcome,data,nextAction:cb?{date:cb.date,time:cb.time}:null});
+  }
+  function finish(){
+    if(s.outcome==='Not interested'&&!s.reason.trim()){toast('Please record the reason.');return}
+    save();
+    /* The outer save function remains available here; persist after the interaction. */
+    try{localStorage.setItem(KEY,JSON.stringify(db))}catch{} render();profile(i);toast('Booked call saved.')}
+  function outcomeView(){
+    if(!s.outcome)s.outcome='Will let me know';
+    let extras='';
+    if(s.outcome==='Not interested')extras=field('Reason','reason','Why are they not interested in this product?');
+    if(s.outcome==='Wants to pay / proceed')extras=`${field('Product','product','Online OPD')}<div class="field"><label>Payment status</label>${lmOpts(['Pending','Payment link sent','Paid'],'bookedPayment')}</div>`;
+    if(s.outcome==='Wants a demo')extras=`<div class="field"><label>Demo details</label><textarea id="bookedDemo">${esc(s.demoDetails)}</textarea></div><div class="field"><label>Demo status</label>${lmOpts(['To schedule','Scheduled','Completed'],'bookedDemoStatus')}</div>`;
+    if(s.outcome==='Asked to call later')extras=callbackFields();
+    if(s.outcome==='Other')extras=field('Outcome','otherOutcome');
+    screen(`<div class="field"><label>Outcome</label>${lmOpts(['Will let me know','Not interested','Wants to pay / proceed','Wants a demo','Asked to call later','Do not contact','Other'],'bookedOutcome')}</div><div id="bookedOutcomeExtra">${extras}</div>`,'Save interaction',finish);
+    lmBind('#bookedOutcome',v=>{s.outcome=v;outcomeView()});select('#bookedOutcome',s.outcome||'Will let me know');
+    if(s.outcome==='Wants to pay / proceed'){lmBind('#bookedPayment',v=>s.paymentStatus=v);select('#bookedPayment',s.paymentStatus)}
+    if(s.outcome==='Wants a demo'){lmBind('#bookedDemoStatus',v=>s.demoStatus=v);select('#bookedDemoStatus',s.demoStatus)}
+    if(s.outcome==='Asked to call later')wireCallback();
+  }
+  function go(step){s.step=step;
+    if(step==='opening'){let opening=`Hi Dr. ${esc(doctorName)}, Kanishk this side. ${l.enquiry?'We got your contact or query from the Online OPD form you filled out on our website. ':' '}Is this a good time to talk?`;screen(ask(opening,`<div class="field"><label>Is this a good time to talk?</label>${lmOpts(['Yes','No','Not interested'],'bookedAvailable')}</div>`),'Continue',()=>{s.available=lmPick('#bookedAvailable');if(s.available==='Not interested'){s.outcome='Not interested';go('outcome')}else go(s.available==='Yes'?'specialty':'callback')},false);lmBind('#bookedAvailable',v=>s.available=v);select('#bookedAvailable',s.available);return}
+    if(step==='callback'){screen(ask('Okay, no problem, Doctor. When should I call you back?',callbackFields()),'Save interaction',finish);wireCallback();return}
+    if(step==='specialty'){screen(ask('What do you practice, Doctor?',field('Specialty','specialty','Specialty')),'Continue',()=>s.specialty.trim()?go('city'):toast('Please record the specialty.'));return}
+    if(step==='city'){screen(ask('Oh, great. Which city do you practice in?',field('City','city','City')),'Continue',()=>s.city.trim()?go('setup'):toast('Please record the city.'));return}
+    if(step==='setup'){screen(ask('And do you have your own setup?',`<div class="field">${lmOpts(['Yes','No'],'bookedSetup')}</div>`),'Continue',()=>{s.setup=lmPick('#bookedSetup');go(s.setup==='No'?'noSetupIntro':'existingContent')});lmBind('#bookedSetup',v=>s.setup=v);select('#bookedSetup',s.setup);return}
+    if(step==='noSetupIntro'){const compliance=l.serviceNmcVerified?'<br><br>And we do this in an NMC-compliant way.':'';screen(say(`Oh, great. The service that we've built is an Online OPD, with which you essentially get an online address that patients can come to repeatedly to see your available slots, make payments, and do teleconsultations.<br><br>It works especially well if you have an online presence. You must have seen a lot of doctors these days making content. Do you also do that?${compliance}`)+`<div class="field">${lmOpts(['Yes','No'],'bookedContent')}</div>`,'Continue',()=>{s.content=lmPick('#bookedContent');go(s.content==='Yes'?'duration':'noContentPlan')});lmBind('#bookedContent',v=>s.content=v);select('#bookedContent',s.content);return}
+    if(step==='content'||step==='existingContent'){screen(ask(step==='existingContent'?'Oh, great. Do you also make content?':'Do you also do that?',`<div class="field">${lmOpts(['Yes','No'],'bookedContent')}</div>`),'Continue',()=>{s.content=lmPick('#bookedContent');go(s.content==='Yes'?(step==='existingContent'?'existingDuration':'duration'):(step==='existingContent'?'existingNoContent':'noContentPlan'))});lmBind('#bookedContent',v=>s.content=v);select('#bookedContent',s.content);return}
+    if(step==='duration'||step==='existingDuration'){screen(ask(step==='existingDuration'?'Oh, great! Since how long have you been creating content?':'Great! Since how long have you been creating content?',field('Content creation duration','duration')),'Continue',()=>s.duration.trim()?go(step==='existingDuration'?'existingFollowers':'followers'):toast('Please record the duration.'));return}
+    if(step==='followers'||step==='existingFollowers'){screen(ask('And how many followers do you have?',field('Follower count','followers')),'Continue',()=>s.followers.trim()?go(step==='existingFollowers'?'existingConversion':'conversion'):toast('Please record the follower count.'));return}
+    if(step==='conversion'||step==='existingConversion'){let text=step==='conversion'?`Great, Doctor. This is exactly where an Online OPD excels. If a patient discovers you at 3 AM, when their intent to consult you is highest, they should be able to book an appointment and pay frictionlessly rather than having to wait for your clinic to open. That's what we help you do. We make the process of converting someone who discovers you online into an actual patient much easier.${l.serviceNmcVerified?'<br><br>And we do this in an NMC-compliant way.':''}<br><br>So, Doctor, is this something you might be interested in? If you'd like, we can set it up for you.`:`This is exactly where we excel. With this, we can help you convert your online followers into actual patients.<br><br>And since you already have an offline setup, we can include a website page for you and an offline booking system for free as part of the offering.<br><br>So, Doctor, is this something you'd be interested in? If you'd like, we can set it up for you, or we can arrange a demo first.`;screen(ask('And do you get any consultation conversions from your content?',say(text)),'Continue',()=>{s.consultationConversionsAsked=true;go('outcome')});return}
+    if(step==='noContentPlan'){screen(ask('Are you planning to start creating content?',`<div class="field">${lmOpts(['Yes','No'],'bookedPlanning')}</div>`),'Continue',()=>{s.planning=lmPick('#bookedPlanning');go(s.planning==='Yes'?'contentMate':'noContentEnd')});lmBind('#bookedPlanning',v=>s.planning=v);select('#bookedPlanning',s.planning);return}
+    if(step==='contentMate'){screen(say(`Ah, great. So, honestly, an Online OPD might not be the best thing for you right now, and I don't want to sell you any bullshit service that you won't benefit from.<br><br>If you're planning to start creating content, we have another app called ContentMate, which might be useful for you. I'll share that with you. And when you start building your online presence, you can always text me and we can talk about the Online OPD again.`)+`<button type="button" class="option ${s.contentMateLinkShared?'selected':''}" id="bookedShared">${s.contentMateLinkShared?'ContentMate link shared':'Mark ContentMate link as shared'}</button>`,'Save interaction',finish);$('#bookedShared').onclick=()=>{s.contentMateLinkShared=!s.contentMateLinkShared;go('contentMate')};return}
+    if(step==='noContentEnd'){screen(say(`Understandable, Doctor. If you do consider building an online presence in the future, just let me know. We can have a conversation again whenever it makes sense for you.`),'Save interaction',finish);return}
+    if(step==='existingNoContent'){screen(say(`Oh, so the service works best, honestly, if you're making content, already have an audience, and want to help those people book appointments, pay online, and access teleconsultations.<br><br>But if you're interested, we can also make custom webpages for your clinic and your existing setup, including a booking page, payment portal, and everything needed for that digital setup.<br><br>Would you be interested in that?`),'Continue',()=>go('outcome'));return}
+    if(step==='outcome'){outcomeView();return}
+  }
+  go('opening');
+}
+
+// Initialize test data toggle
+const testToggle=$('#testDataToggle');
+if(testToggle){
+  testToggle.checked=db.testDataEnabled||false;
+  testToggle.onchange=()=>{
+    db.testDataEnabled=testToggle.checked;
+    if(testToggle.checked){
+      applyTestData();
+    }else{
+      removeTestData();
+    }
+  };
+}
+if($('#saveScripts'))$('#saveScripts').onclick=saveScripts;renderScripts();
+const makeSayEditable=()=>$$('.notice').forEach(box=>{if(box.dataset.sayEditable||!/^SAY\b/i.test(box.textContent.trim()))return;let text=box.textContent.replace(/^SAY\s*/i,'');box.innerHTML=`<b>SAY</b><br><textarea class="inline-script">${esc(text)}</textarea>`;box.dataset.sayEditable='1';box.querySelector('textarea').oninput=e=>{db.scripts=db.scripts||{};db.scripts[`say:${text.slice(0,30)}`]=e.target.value;save()}});new MutationObserver(makeSayEditable).observe(document.body,{childList:true,subtree:true});const dashboardOpenTask=openTask;openTask=function(i){let t=db.tasks.find(x=>x.id===i),l=lead(t?.leadId);if(t?.type==='call'&&l){t.done=true;save();lmFollowIntro(l.id);return}return dashboardOpenTask(i)};
+const leadmateSheet=sheet;sheet=function(h){leadmateSheet(h);setTimeout(makeSayEditable,0)};makeSayEditable();
