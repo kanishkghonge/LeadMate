@@ -37,6 +37,12 @@
         <div id="leadList" class="lead-list"></div>
       </section>
 
+      <section id="demosView" class="view">
+        <div class="page-title"><div><p class="eyebrow">ACTIVE DEMOS</p><h1>Demos</h1></div></div>
+        <p class="muted demo-intro">People currently trying a product. When a demo ends, feedback is added to Today automatically.</p>
+        <div id="demoList" class="lead-list"></div>
+      </section>
+
       <section id="settingsView" class="view">
         <div class="page-title"><div><p class="eyebrow">SETUP</p><h1>Settings</h1></div></div>
         <section class="settings-card"><h2>Your business context</h2><p>This is included in every AI prompt.</p><textarea id="businessContext" placeholder="What you sell, ideal customer, your tone, important offers…"></textarea><button id="saveContext" class="primary">Save context</button></section>
@@ -48,7 +54,7 @@
       </section>
     </main>
 
-    <nav class="bottom-nav"><button class="nav active" data-view="dashboardView"><span>⌂</span>Today</button><button class="nav" data-view="leadsView"><span>♙</span>People</button><button class="nav" data-view="settingsView"><span>⚙</span>Settings</button></nav>
+    <nav class="bottom-nav"><button class="nav active" data-view="dashboardView"><span>⌂</span>Today</button><button class="nav" data-view="leadsView"><span>♙</span>People</button><button class="nav" data-view="demosView"><span>◉</span>Demos</button><button class="nav" data-view="settingsView"><span>⚙</span>Settings</button></nav>
   </div>
 
   <div class="modal-backdrop" id="modalBackdrop"></div>
