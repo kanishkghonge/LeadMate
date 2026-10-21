@@ -1,0 +1,70 @@
+{
+  "_comment": "Example WebDAV configuration for LeadMate",
+  "_instructions": "Copy this template and fill in your credentials. DO NOT commit actual credentials to version control!",
+  
+  "providers": {
+    "koofr": {
+      "name": "Koofr",
+      "url": "https://app.koofr.net/dav/Koofr/leadmate/",
+      "username": "your-email@example.com",
+      "password": "your-app-password-here",
+      "notes": "Create app password at: Settings → Password → App passwords"
+    },
+    
+    "nextcloud": {
+      "name": "Nextcloud",
+      "url": "https://cloud.example.com/remote.php/dav/files/username/leadmate/",
+      "username": "your-username",
+      "password": "your-app-password-here",
+      "notes": "Replace 'cloud.example.com' with your Nextcloud instance and 'username' with your actual username"
+    },
+    
+    "box": {
+      "name": "Box.com",
+      "url": "https://dav.box.com/dav/leadmate/",
+      "username": "your-email@example.com",
+      "password": "your-box-password",
+      "notes": "Use your Box.com credentials"
+    },
+    
+    "4shared": {
+      "name": "4shared",
+      "url": "https://webdav.4shared.com/leadmate/",
+      "username": "your-username",
+      "password": "your-password",
+      "notes": "Use your 4shared account credentials"
+    },
+    
+    "custom": {
+      "name": "Custom WebDAV Server",
+      "url": "https://your-server.com/webdav/leadmate/",
+      "username": "webdav-username",
+      "password": "webdav-password",
+      "notes": "For your own hosting or other WebDAV services"
+    }
+  },
+  
+  "settings": {
+    "autoSync": true,
+    "syncInterval": 300000,
+    "_intervalNote": "Interval in milliseconds (300000 = 5 minutes)",
+    "backupRetention": 30,
+    "_retentionNote": "Number of days to keep backups (for manual cleanup)"
+  },
+  
+  "security_tips": [
+    "Always use HTTPS URLs, never HTTP",
+    "Use app-specific passwords when available",
+    "Don't share your config file with credentials",
+    "Test connection before enabling auto-sync",
+    "Keep local backups as well"
+  ],
+  
+  "quickstart": {
+    "step1": "Choose a provider from the list above",
+    "step2": "Sign up for a free account",
+    "step3": "Create an app password if available",
+    "step4": "Enter credentials in LeadMate Settings",
+    "step5": "Test connection and enable sync"
+  }
+}

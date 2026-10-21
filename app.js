@@ -325,6 +325,235 @@ const makeSayEditable=()=>$$('.notice').forEach(box=>{if(box.dataset.sayEditable
 const leadmateSheet=sheet;sheet=function(h){leadmateSheet(h);setTimeout(makeSayEditable,0)};makeSayEditable();
 function renderDemos(){let box=$('#demoList');if(!box)return;let ds=db.leads.filter(l=>l.demoStatus==='active'||l.status==='demo');box.innerHTML=ds.length?ds.map(l=>`<article class="lead"><div class="avatar">${esc(l.name[0]?.toUpperCase()||'?')}</div><div class="lead-info"><strong>${esc(l.name)}</strong><span>${esc(l.contact)} · ${l.demoDate?'until '+l.demoDate:'demo selected'}</span></div>${l.demoDate?'':`<button class="option" onclick="startDemo('${l.id}')">Set demo</button>`}<button class="option" onclick="demoOutcome('${l.id}','converted')">Converted</button><button class="option" onclick="demoOutcome('${l.id}','not-interested')">Not interested</button><button class="option" onclick="demoOutcome('${l.id}','extended')">Extend</button></article>`).join(''):'<div class="empty">No active demos. Mark a person as a demo from their profile.</div>'}
 function startDemo(i){let l=lead(i);sheet(`<h2>Start demo for ${esc(l.name)}</h2><form id="demoForm" class="form-grid"><div class="field"><label>Demo ends on</label><input id="demoDate" type="date" min="${today()}" value="${esc(l.demoDate||add(7))}" required></div><div class="field"><label>What are they trying?</label><textarea id="demoNote">${esc(l.demoNote||'')}</textarea></div><div class="sheet-footer"><button type="button" class="secondary" onclick="closeSheet()">Cancel</button><button class="primary">Start demo</button></div></form>`);$('#demoForm').onsubmit=e=>{e.preventDefault();l.demoStatus='active';l.status='demo';l.demoDate=$('#demoDate').value;l.demoNote=$('#demoNote').value;let t=db.tasks.find(t=>t.leadId===i&&t.type==='deliver_demo'&&!t.done);if(!t)db.tasks.push({id:id(),leadId:i,type:'deliver_demo',title:`Deliver demo to ${l.name}`,note:l.demoNote,date:today(),done:false,demoId:i});save();closeSheet();render();renderDemos();toast('Demo added.')}}
-function demoOutcome(i,s){let l=lead(i);if(s==='extended'){startDemo(i);return}l.demoStatus=s;l.status=s;l.demoDate='';closeFor(i,'demo-'+s);if(s==='converted')l.converted=true;save();render();renderDemos();toast(`Demo marked ${s}.`)}
+function demoOutcome(i,s){let l=lead(i);if(s==='extended'){startDemo(i);return}if(s==='paid'){payClient(i);return}l.demoStatus=s;l.status=s;if(s!=='extended')l.demoDate='';closeFor(i,'demo-'+s);save();render();renderDemos();toast(`Demo marked ${s}.`)}
+function setDemoStage(i,stage){let l=lead(i);l.demoStage=stage;l.demoStatus='active';l.status='demo';save();renderDemos();toast(`${l.name}: ${stage}.`)}
+function syncDemoFeedback(){db.leads.filter(l=>l.demoStatus==='active'&&l.demoDate&&l.demoDate<=today()).forEach(l=>{if(!db.tasks.some(t=>t.demoFeedback&&t.leadId===l.id&&!t.done)){db.tasks.push({id:id(),leadId:l.id,type:'general',title:`Take demo feedback from ${l.name}`,note:'Ask what they thought of the demo and record the next step.',date:today(),done:false,demoFeedback:true});l.demoStatus='feedback_due';}});save()}
+function renderClients(){let box=$('#clientList');if(!box)return;let cs=db.leads.filter(l=>l.client||l.converted&&l.payment),oneTime=cs.reduce((n,l)=>n+Number(l.payment?.oneTime||l.paymentAmount||0),0),mrr=cs.reduce((n,l)=>n+Number(l.payment?.monthly||l.monthlyPayment||0),0);$('#clientMetrics').innerHTML=`<div class="metric"><span>Total money made</span><strong>₹${oneTime.toLocaleString('en-IN')}</strong></div><div class="metric"><span>MRR</span><strong>₹${mrr.toLocaleString('en-IN')}</strong><small>monthly recurring revenue</small></div>`;box.innerHTML=cs.length?cs.map(l=>`<article class="lead"><div class="avatar">${esc(l.name[0]?.toUpperCase()||'?')}</div><div class="lead-info"><strong>${esc(l.name)}</strong><span>${esc(l.contact)} · ${esc(l.services||'Services not recorded')}</span></div><span class="badge">${l.monthlyPayment?'₹'+esc(l.monthlyPayment)+'/mo':'Client'}</span></article>`).join(''):'<div class="empty">No clients yet. Paid demo customers will appear here.</div>'}
+function payClient(i){let l=lead(i);sheet(`<h2>Move ${esc(l.name)} to Clients?</h2><p class="intro">This will remove them from active demos and save their billing details.</p><form id="clientForm" class="form-grid"><div class="field"><label>One-time payment</label><input name="oneTime" type="number" min="0" step="0.01" required></div><div class="field"><label>Monthly payment</label><input name="monthly" type="number" min="0" step="0.01" required></div><div class="field"><label>Services opted</label><input name="services" required placeholder="Online OPD, ContentMate…"></div><div class="field"><label>Monthly payments completed</label><input name="months" type="number" min="0" value="0" required></div><div class="field"><label>Plan length (months)</label><input name="duration" type="number" min="1" value="12" required></div><div class="sheet-footer"><button type="button" class="secondary" onclick="closeSheet()">Cancel</button><button class="primary">Confirm paid</button></div></form>`);$('#clientForm').onsubmit=e=>{e.preventDefault();let f=new FormData(e.target),months=Number(f.get('months')),duration=Number(f.get('duration')),remaining=Math.max(0,duration-months);l.client=true;l.converted=true;l.payment={oneTime:Number(f.get('oneTime')),monthly:Number(f.get('monthly')),monthsPaid:months,duration};l.paymentAmount=l.payment.oneTime;l.monthlyPayment=l.payment.monthly;l.services=f.get('services').trim();l.demoStatus='paid';l.status='paid';l.demoDate='';closeFor(i,'paid');if(remaining===0)db.tasks.push({id:id(),type:'general',title:`Renew ${l.name}`,note:'Client plan has ended. Discuss renewal.',date:add(1),done:false,renewal:true,leadId:i});else{let renew=new Date(`${today()}T12:00:00`);renew.setMonth(renew.getMonth()+remaining);db.tasks.push({id:id(),type:'general',title:`Renew ${l.name}`,note:'Client plan is due for renewal.',date:day(renew),done:false,renewal:true,leadId:i});}save();closeSheet();render();renderDemos();renderClients();toast(`${l.name} moved to Clients.`)}}
+document.addEventListener('click',e=>{let b=e.target.closest('[data-view]');if(b&&b.dataset.view==='demosView'){syncDemoFeedback();renderDemos()}if(b&&b.dataset.view==='clientsView')renderClients()});
+document.addEventListener('DOMContentLoaded',()=>{syncDemoFeedback();renderDemos();renderClients()});
 renderDemos();
 document.addEventListener('DOMContentLoaded',renderDemos);
+function renderDemos(){let box=$('#demoList');if(!box)return;let ds=db.leads.filter(l=>['active','feedback_due'].includes(l.demoStatus)||l.status==='demo');box.innerHTML=ds.length?ds.map(l=>`<article class="lead"><div class="avatar">${esc(l.name[0]?.toUpperCase()||'?')}</div><div class="lead-info"><strong>${esc(l.name)}</strong><span>${esc(l.contact)} · ${l.demoDate?'until '+l.demoDate:'demo selected'}</span></div><div class="demo-controls"><select onchange="setDemoStage('${l.id}',this.value)">${['requested','delivered','approved','production'].map(s=>`<option ${((l.demoStage||'requested')===s)?'selected':''}>${s}</option>`).join('')}</select><input type="date" value="${esc(l.demoDate||'')}" onchange="updateDemoDate('${l.id}',this.value)"/><button class="option" onclick="demoOutcome('${l.id}','paid')">Paid</button><button class="option" onclick="demoOutcome('${l.id}','not-interested')">Not interested</button></div></article>`).join(''):'<div class="empty">No active demos. People selected as demos from call workflows will appear here.</div>'}
+function updateDemoDate(i,date){let l=lead(i);l.demoDate=date;l.demoStatus='active';l.status='demo';save();toast('Demo date updated.')}
+(()=>{let nav=document.querySelector('.bottom-nav');if(nav&&!nav.querySelector('[data-view="clientsView"]')){let b=document.createElement('button');b.className='nav';b.dataset.view='clientsView';b.innerHTML='<span>C</span>Clients';b.onclick=()=>navTo('clientsView');nav.insertBefore(b,nav.lastElementChild)}})();
+document.addEventListener('DOMContentLoaded',()=>{let nav=document.querySelector('.bottom-nav');if(nav&&!nav.querySelector('[data-view="clientsView"]')){let b=document.createElement('button');b.className='nav';b.dataset.view='clientsView';b.innerHTML='<span>C</span>Clients';b.onclick=()=>navTo('clientsView');nav.insertBefore(b,nav.lastElementChild)}});
+function navTo(view){document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));let target=document.getElementById(view);if(!target)return;target.classList.add('active');document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));if(view==='clientsView')renderClients();if(view==='demosView')renderDemos()}
+window.navTo=navTo;
+
+
+/* WebDAV Integration */
+function initWebDAV() {
+  if (!window.webdavStorage) return;
+  
+  const config = webdavStorage.config;
+  const enabledToggle = $('#webdavEnabled');
+  const autoSyncToggle = $('#webdavAutoSync');
+  const settingsDiv = $('#webdavSettings');
+  const statusDiv = $('#webdavStatus');
+  
+  if (!enabledToggle) return;
+  
+  // Load saved settings
+  enabledToggle.checked = config.enabled;
+  if ($('#webdavUrl')) $('#webdavUrl').value = config.url || '';
+  if ($('#webdavUsername')) $('#webdavUsername').value = config.username || '';
+  if ($('#webdavPassword')) $('#webdavPassword').value = config.password || '';
+  if (autoSyncToggle) autoSyncToggle.checked = config.autoSync;
+  
+  if (settingsDiv) {
+    settingsDiv.style.display = config.enabled ? 'block' : 'none';
+  }
+  
+  // Toggle settings visibility
+  enabledToggle.onchange = () => {
+    if (settingsDiv) {
+      settingsDiv.style.display = enabledToggle.checked ? 'block' : 'none';
+    }
+    if (!enabledToggle.checked) {
+      webdavStorage.stopAutoSync();
+      webdavStorage.saveConfig({ enabled: false });
+    }
+  };
+  
+  // Test connection
+  const testBtn = $('#webdavTest');
+  if (testBtn) {
+    testBtn.onclick = async () => {
+      const url = $('#webdavUrl').value.trim();
+      const username = $('#webdavUsername').value.trim();
+      const password = $('#webdavPassword').value;
+      
+      if (!url || !username || !password) {
+        toast('Please fill in all WebDAV settings');
+        return;
+      }
+      
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing...';
+      
+      try {
+        webdavStorage.saveConfig({ url, username, password });
+        const result = await webdavStorage.testConnection();
+        toast('✓ Connection successful!');
+        if (statusDiv) statusDiv.textContent = 'Connection test passed ✓';
+      } catch (error) {
+        toast('Connection failed: ' + error.message);
+        if (statusDiv) statusDiv.textContent = 'Error: ' + error.message;
+      } finally {
+        testBtn.disabled = false;
+        testBtn.textContent = 'Test connection';
+      }
+    };
+  }
+  
+  // Save settings
+  const saveBtn = $('#webdavSave');
+  if (saveBtn) {
+    saveBtn.onclick = () => {
+      const url = $('#webdavUrl').value.trim();
+      const username = $('#webdavUsername').value.trim();
+      const password = $('#webdavPassword').value;
+      const autoSync = autoSyncToggle ? autoSyncToggle.checked : false;
+      const enabled = enabledToggle.checked;
+      
+      if (enabled && (!url || !username || !password)) {
+        toast('Please fill in all WebDAV settings');
+        return;
+      }
+      
+      webdavStorage.saveConfig({
+        enabled,
+        url,
+        username,
+        password,
+        autoSync
+      });
+      
+      if (enabled && autoSync) {
+        webdavStorage.startAutoSync(() => db);
+        toast('WebDAV settings saved. Auto-sync enabled.');
+      } else {
+        webdavStorage.stopAutoSync();
+        toast('WebDAV settings saved.');
+      }
+      
+      if (statusDiv) {
+        statusDiv.textContent = enabled 
+          ? `Enabled. ${autoSync ? 'Auto-sync active.' : 'Manual sync only.'}`
+          : 'Disabled';
+      }
+    };
+  }
+  
+  // Upload now
+  const uploadBtn = $('#webdavUpload');
+  if (uploadBtn) {
+    uploadBtn.onclick = async () => {
+      if (!webdavStorage.config.enabled) {
+        toast('Enable WebDAV first');
+        return;
+      }
+      
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Uploading...';
+      
+      try {
+        const filename = `leadmate-manual-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+        const result = await webdavStorage.uploadData(db, filename);
+        toast('✓ Backup uploaded to cloud');
+        if (statusDiv) statusDiv.textContent = `Last upload: ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        toast('Upload failed: ' + error.message);
+        if (statusDiv) statusDiv.textContent = 'Upload error: ' + error.message;
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload now';
+      }
+    };
+  }
+  
+  // Download backup
+  const downloadBtn = $('#webdavDownload');
+  if (downloadBtn) {
+    downloadBtn.onclick = async () => {
+      if (!webdavStorage.config.enabled) {
+        toast('Enable WebDAV first');
+        return;
+      }
+      
+      if (!confirm('This will replace your current data with the cloud backup. Continue?')) {
+        return;
+      }
+      
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = 'Downloading...';
+      
+      try {
+        // Try to list backups first
+        const listResult = await webdavStorage.listBackups();
+        
+        if (listResult.success && listResult.files.length > 0) {
+          // Sort by modified date, newest first
+          const sorted = listResult.files.sort((a, b) => 
+            (b.modified?.getTime() || 0) - (a.modified?.getTime() || 0)
+          );
+          
+          const latestFile = sorted[0].name;
+          const result = await webdavStorage.downloadData(latestFile);
+          
+          if (result.success && result.data) {
+            db = result.data;
+            localStorage.setItem(KEY, JSON.stringify(db));
+            render();
+            toast('✓ Data restored from cloud backup');
+            if (statusDiv) statusDiv.textContent = `Restored: ${latestFile}`;
+          } else {
+            toast(result.message || 'No backup found');
+          }
+        } else {
+          // Fallback to default filename
+          const result = await webdavStorage.downloadData();
+          if (result.success && result.data) {
+            db = result.data;
+            localStorage.setItem(KEY, JSON.stringify(db));
+            render();
+            toast('✓ Data restored from cloud backup');
+            if (statusDiv) statusDiv.textContent = `Restored: ${new Date().toLocaleTimeString()}`;
+          } else {
+            toast('No backup found on server');
+          }
+        }
+      } catch (error) {
+        toast('Download failed: ' + error.message);
+        if (statusDiv) statusDiv.textContent = 'Download error: ' + error.message;
+      } finally {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = 'Download backup';
+      }
+    };
+  }
+  
+  // Start auto-sync if enabled
+  if (config.enabled && config.autoSync) {
+    webdavStorage.startAutoSync(() => db);
+  }
+}
+
+// Initialize WebDAV on page load
+if (typeof window !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initWebDAV);
+  } else {
+    initWebDAV();
+  }
+}
+
+// Also initialize when settings view is opened
+const originalNavTo = window.navTo;
+window.navTo = function(view) {
+  if (originalNavTo) originalNavTo(view);
+  if (view === 'settingsView') {
+    setTimeout(initWebDAV, 100);
+  }
+};

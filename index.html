@@ -39,8 +39,14 @@
 
       <section id="demosView" class="view">
         <div class="page-title"><div><p class="eyebrow">ACTIVE DEMOS</p><h1>Demos</h1></div></div>
-        <p class="muted demo-intro">People currently trying a product. When a demo ends, feedback is added to Today automatically.</p>
+        <p class="muted demo-intro">People currently trying a product. When a demo ends, feedback is added to Today automatically.</p><button class="secondary" onclick="navTo('clientsView')">Open Clients</button>
         <div id="demoList" class="lead-list"></div>
+      </section>
+
+      <section id="clientsView" class="view">
+        <div class="page-title"><div><p class="eyebrow">ACTIVE CLIENTS</p><h1>Clients</h1></div></div>
+        <div id="clientMetrics" class="client-metrics"></div>
+        <div id="clientList" class="lead-list"></div>
       </section>
 
       <section id="settingsView" class="view">
@@ -48,6 +54,7 @@
         <section class="settings-card"><h2>Your business context</h2><p>This is included in every AI prompt.</p><textarea id="businessContext" placeholder="What you sell, ideal customer, your tone, important offers…"></textarea><button id="saveContext" class="primary">Save context</button></section>
         <section class="settings-card"><h2>Call scripts &amp; branches</h2><p>Questions are fixed so the workflow stays consistent. Edit only the words you say and the branch notes; changes are saved on this device.</p><div id="scriptEditor"></div><button id="saveScripts" class="primary">Save scripts</button></section>
         <section class="settings-card"><h2>Your data</h2><p>Keep a backup, load detailed sample leads to explore the workflow, or start from a blank slate.</p><div class="two-buttons"><button id="exportData" class="secondary">Export data</button><label class="secondary file-label">Import data<input id="importData" type="file" accept="application/json" hidden /></label></div><div class="two-buttons" style="margin-top:9px"><button id="loadDemo" class="secondary">Load demo data</button><button id="clearData" class="danger secondary">Start fresh</button></div></section>
+        <section class="settings-card"><h2>WebDAV Cloud Sync</h2><p>Automatically backup your data to a WebDAV server. Your data stays encrypted with your credentials.</p><div class="field"><label class="toggle-label"><input type="checkbox" id="webdavEnabled" /><span class="toggle-switch"></span><span class="toggle-text">Enable WebDAV sync</span></label></div><div id="webdavSettings" style="display:none"><div class="field"><label>WebDAV Server URL</label><input id="webdavUrl" type="url" placeholder="https://webdav.example.com/leadmate/" /></div><div class="field"><label>Username</label><input id="webdavUsername" type="text" placeholder="your-username" /></div><div class="field"><label>Password</label><input id="webdavPassword" type="password" placeholder="your-password" /></div><div class="field"><label class="toggle-label"><input type="checkbox" id="webdavAutoSync" /><span class="toggle-switch"></span><span class="toggle-text">Auto-sync every 5 minutes</span></label></div><div class="two-buttons"><button id="webdavTest" class="secondary">Test connection</button><button id="webdavSave" class="primary">Save settings</button></div><div class="two-buttons" style="margin-top:9px"><button id="webdavUpload" class="secondary">Upload now</button><button id="webdavDownload" class="secondary">Download backup</button></div><p id="webdavStatus" class="muted" style="margin-top:10px;font-size:12px"></p></div></section>
         <section class="settings-card"><h2>Test data mode</h2><p>Enable test mode to populate the app with a large sample dataset for testing features. Test data will be merged with your existing data.</p><div class="field"><label class="toggle-label"><input type="checkbox" id="testDataToggle" /><span class="toggle-switch"></span><span class="toggle-text">Enable test data</span></label></div></section>
         <section class="settings-card subtle"><h2>Developer options</h2><p>Set a simulated today date to test overdue and upcoming follow-ups. Leave it blank to use the real date.</p><div class="field"><label>Simulated today</label><input id="developerDate" type="date" /></div><button id="saveDeveloperDate" class="secondary">Apply test date</button></section>
         <section class="settings-card subtle"><h2>How LeadMate works</h2><p>Everything stays on this device. Overdue tasks automatically appear in today’s list until completed or rescheduled.</p></section>
@@ -60,6 +67,7 @@
   <div class="modal-backdrop" id="modalBackdrop"></div>
   <aside class="sheet" id="sheet"><div class="sheet-handle"></div><div id="sheetContent"></div></aside>
   <div id="toast"></div>
-  <script src="app.js?v=4"></script>
+  <script src="webdav-storage.js"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
